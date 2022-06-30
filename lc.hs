@@ -83,17 +83,17 @@ flatten (Builtin x) = Builtin x
 _I :: Expr
 _I = Builtin I
 
-_K :: Expr
-_K = Builtin K
-
 _M :: Expr
 _M = Builtin M
 
-_KI :: Expr
-_KI = Builtin KI
-
 _OMEGA :: Expr
 _OMEGA = Appl [_M, _M]
+
+_K :: Expr
+_K = Builtin K
+
+_KI :: Expr
+_KI = Builtin KI
 
 main :: IO ()
 main = undefined
