@@ -1,6 +1,6 @@
 module Main where
 
-data Combinator = I | M | K | KI deriving (Eq, Show)
+data Combinator = I | M | K | KI | C deriving (Eq, Show)
 
 data Expr = Var String | Appl [Expr] | Abs [String] Expr | Builtin Combinator
     deriving (Eq)
@@ -52,6 +52,7 @@ expandBuiltin I = Abs ["x"] $ Var "x"
 expandBuiltin M = Abs ["x"] $ Appl [Var "x", Var "x"]
 expandBuiltin K = Abs ["x", "y"] $ Var "x"
 expandBuiltin KI = Abs ["x", "y"] $ Var "y"
+expandBuiltin C = Abs ["f", "a", "b"] $ Appl [Var "f", Var "b", Var "a"]
 
 simplifyBuiltin :: Expr -> Expr
 simplifyBuiltin (Var x) = Var x
@@ -94,6 +95,9 @@ _K = Builtin K
 
 _KI :: Expr
 _KI = Builtin KI
+
+_C :: Expr
+_C = Builtin C
 
 main :: IO ()
 main = undefined
