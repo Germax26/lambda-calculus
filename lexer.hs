@@ -1,4 +1,4 @@
-module Lexer ( Lexer, Error, lexerTokens, lexStr, repl ) where
+module Lexer ( module Lexer ) where
 
 import Data.Either ()
 import Data.Char ( isAlpha, isSpace )
