@@ -141,10 +141,6 @@ lexerAssert f msg lexer = case lexerSource lexer of
 lexerAssertChar :: Char -> Lexer -> LexerResult
 lexerAssertChar c = lexerAssert (==c) [c]
 
-lexerPeek :: Lexer -> Char
-lexerPeek lexer
-    | lexerExhausted lexer = error "Lexer is exhausted"
-    | otherwise = head $ lexerSource lexer
 
 takeCharsWhile :: (Char -> Bool) -> (String, String, Loc) -> (String, String, Loc)
 takeCharsWhile f (curr, "", loc) = (curr, "", loc)
@@ -196,7 +192,6 @@ lexString lexer = case lexerSource lexer of
     [] -> lexErr "Expected String, got EOF" lexer
     c:_ -> do
         lexer <- lexerAssertChar '"' lexer
-        let loc = lexerLoc lexer
         lexer <- lexerAdvanceWhile (/= '"') lexer
         case lexerSource lexer of
             [] -> lexErrStartLoc "Unterminal string literal" lexer
