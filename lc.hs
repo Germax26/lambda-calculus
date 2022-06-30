@@ -1,5 +1,7 @@
 module Main where
 
+import Lexer ( repl )
+
 data Combinator = I | M | K | KI | C deriving (Eq, Show)
 
 data Expr = Var String | Appl [Expr] | Abs [String] Expr | Builtin Combinator
@@ -21,7 +23,7 @@ abstractFront = "λ" -- can be "\\" to mimic Haskell's lambda syntax
 abstractBack :: [Char]
 abstractBack = "." -- can be " -> " to mimic Haskell's lambda syntax
 abstractMiddle :: [Char]
-abstractMiddle = abstractBack ++ abstractFront 
+abstractMiddle = abstractBack ++ abstractFront
 -- abstractMiddle = ","  -- represent uncurried functions with a comma seperating the parameters. i.e. λx,y.x 
 
 abstract :: [String] -> String
@@ -100,4 +102,4 @@ _C :: Expr
 _C = Builtin C
 
 main :: IO ()
-main = undefined
+main = Lexer.repl -- temporary main
