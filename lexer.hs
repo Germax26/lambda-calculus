@@ -48,7 +48,7 @@ newError msg loc = Error{errMessage=msg,errLoc=loc}
 instance Show Error where
     show Error{errMessage=msg,errLoc=loc} = show loc ++ ": ERROR: " ++ msg
 
-data TokenKind = Lambda | Dot | Open | Close | Ident | String deriving Show
+data TokenKind = Lambda | Dot | Open | Close | Ident | String deriving (Eq, Show)
 
 data Token = Token{
     tokenKind::TokenKind,
@@ -177,28 +177,6 @@ appendTokenFromFlush kind lexer = do
     lexer <- appendToken (Token kind curr loc) lexer
     lexerFlush lexer
 
--- Lexer Methods for differnt tokens
-
-lexIdent :: Lexer -> LexerResult
-lexIdent lexer = case lexerSource lexer of
-    [] -> lexErr "Expected Identifier, got EOF" lexer
-    c:_ | isAlpha c -> do
-            lexer <- lexerAdvanceWhile isAlpha lexer
-            appendTokenFromFlush Ident lexer
-        | otherwise -> lexErr "Invalid character for identifier" lexer
-
-lexString :: Lexer -> LexerResult
-lexString lexer = case lexerSource lexer of
-    [] -> lexErr "Expected String, got EOF" lexer
-    c:_ -> do
-        lexer <- lexerAssertChar '"' lexer
-        lexer <- lexerAdvanceWhile (/= '"') lexer
-        case lexerSource lexer of
-            [] -> lexErrStartLoc "Unterminal string literal" lexer
-            c:_ -> do
-                lexer <- lexerAssertChar '"' lexer
-                appendTokenFromFlush String lexer
-
 -- Main Lexer method
 
 λlex :: Lexer -> LexerResult
@@ -222,8 +200,17 @@ lexString lexer = case lexerSource lexer of
             | c == ')' -> do
                 lexer <- lexerAdvance lexer
                 appendTokenFromFlush Close lexer
-            | c == '"' -> lexString lexer
-            | isAlpha c -> lexIdent lexer
+            | c == '"' -> do
+                lexer <- lexerSkip lexer 
+                lexer <- lexerAdvanceWhile (/= '"') lexer
+                case lexerSource lexer of
+                    [] -> lexErrStartLoc "Unterminal string literal" lexer
+                    c:_ -> do
+                        lexer <- lexerAssertChar '"' lexer
+                        appendTokenFromFlush String lexer
+            | isAlpha c -> do
+                lexer <- lexerAdvanceWhile isAlpha lexer
+                appendTokenFromFlush Ident lexer
             | isSpace c -> lexerAdvanceWhile isSpace lexer
             | otherwise -> lexErr ("Invalid character `"++[c]++"`") lexer
     if null $ lexerSource lexer then return lexer else λlex lexer
