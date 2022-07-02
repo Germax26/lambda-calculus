@@ -1,10 +1,10 @@
 module Expr ( module Expr ) where
 
-import Util ( joinByMap, joinBy ) 
+import Util ( joinByMap, joinBy )
 
 data Combinator = I | M | K | KI | C deriving (Eq, Show)
 
-data Expr = Var String | Appl [Expr] | Abs [String] Expr | Builtin Combinator
+data Expr = Var Int | Appl [Expr] | Abs [String] Expr | Builtin Combinator
     deriving (Eq)
 
 -- please ignore all constants and functions that start with "abstract". 
@@ -19,34 +19,33 @@ abstractMiddle :: [Char]
 abstractMiddle = abstractBack ++ abstractFront
 -- abstractMiddle = ","  -- represent uncurried functions with a comma seperating the parameters. i.e. λx,y.x 
 
-abstract :: [String] -> String
-abstract [] = ""
-abstract xs = abstractFront ++ xs `joinBy` abstractMiddle ++ abstractBack
+showApplicant :: (Expr -> String) -> Expr -> String
+showApplicant f (Appl xs) = "(" ++ f (Appl xs) ++ ")"
+showApplicant f (Abs heads body) = "(" ++ f (Abs heads body) ++ ")"
+showApplicant f x = f x
 
-instance Show Expr where
-    show (Var x) = x
-    show (Appl []) = error "unreachable"
-    show (Appl [x]) = show x
-    show (Appl xs) = joinByMap showApplicant xs " "
-        where showApplicant :: Expr -> String
-              showApplicant (Appl xs) = "(" ++ show (Appl xs) ++ ")"
-              showApplicant (Abs heads body) = "(" ++ show (Abs heads body) ++ ")"
-              showApplicant x = show x
-    show (Abs heads body) = abstract heads ++ show body
-    show (Builtin x) = show x
+showHeads :: [String] -> String
+showHeads [] = ""
+showHeads xs = abstractFront ++ xs `joinBy` abstractMiddle ++ abstractBack
 
-betaReduce :: Expr -> String -> Expr -> Expr
-betaReduce (Var x) y z = if y == x then z else Var x
-betaReduce (Appl xs) y z = Appl $ map (\x -> betaReduce x y z) xs
-betaReduce (Abs heads body) y z = if y `elem` heads then Abs heads body else Abs heads $ betaReduce body y z
-betaReduce (Builtin x) y z = Builtin x
+showExpr :: [String] -> Expr -> String
+showExpr heads (Var x)
+    | x <= 0 = error "TODO: Nonpositive indices"
+    | x > len = error "TODO: Show free variables"
+    | otherwise = heads !! (len - x)
+    where len = length heads
+showExpr heads (Appl xs) = joinByMap (showApplicant $ showExpr heads) xs " "
+showExpr heads (Abs new_heads body) = showHeads new_heads ++ showExpr (heads ++ new_heads) body
+showExpr _ (Builtin x) = show x
+
+instance Show Expr where show x = showExpr [] x
 
 expandBuiltin :: Combinator -> Expr
-expandBuiltin I = Abs ["x"] $ Var "x"
-expandBuiltin M = Abs ["x"] $ Appl [Var "x", Var "x"]
-expandBuiltin K = Abs ["x", "y"] $ Var "x"
-expandBuiltin KI = Abs ["x", "y"] $ Var "y"
-expandBuiltin C = Abs ["f", "a", "b"] $ Appl [Var "f", Var "b", Var "a"]
+expandBuiltin I = Abs ["x"] $ Var 1
+expandBuiltin M = Abs ["x"] $ Appl [Var 1, Var 1]
+expandBuiltin K = Abs ["x", "y"] $ Var 2
+expandBuiltin KI = Abs ["x", "y"] $ Var 1
+expandBuiltin C = Abs ["f", "a", "b"] $ Appl [Var 3, Var 1, Var 2]
 
 simplifyBuiltin :: Expr -> Expr
 simplifyBuiltin (Var x) = Var x
@@ -61,7 +60,7 @@ simplify (Appl [x]) = simplify x
 simplify (Appl (Var x:xs)) = Appl (Var x:xs)
 simplify (Appl (Appl xs:ys)) = simplify $ Appl (xs ++ ys)
 simplify (Appl (Abs [] body:xs)) = simplify $ Appl (body:xs)
-simplify (Appl (Abs (param:heads) body:arg:xs)) = simplify $ Appl $ simplify (Abs heads $ betaReduce body param arg) : xs
+simplify (Appl (Abs (param:heads) body:arg:xs)) = error "TODO: Simplify function application"
 simplify (Appl (Builtin x:xs)) = simplify $ Appl $ expandBuiltin x:xs
 simplify (Abs heads body) = (if null heads then id else Abs heads) $ simplify body
 simplify (Builtin x) = Builtin x
