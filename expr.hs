@@ -53,6 +53,19 @@ simplifyBuiltin (Appl xs) = Appl $ map simplifyBuiltin xs
 simplifyBuiltin (Abs heads body) = Abs heads $ simplifyBuiltin body
 simplifyBuiltin (Builtin x) = expandBuiltin x
 
+shift :: Int -> [Expr]
+shift x = map Var [x+1..]
+
+substitute :: [Expr] -> Expr -> Expr
+substitute xs (Var x)  = xs !! (x - 1)
+substitute xs (Appl ys) = Appl $ map (substitute xs) ys
+substitute xs (Abs [] body) = substitute xs body
+substitute xs (Abs (param:heads) body) = Abs [param] $ substitute sigmas gamma
+    where sigmas = Var 1 : map (substitute (shift 1)) xs
+          gamma = Abs heads body
+-- A builtin combinator should never have any free variables
+substitute xs (Builtin x) = Builtin x
+
 simplify :: Expr -> Expr
 simplify (Var x) = Var x
 simplify (Appl []) = error "unreachable"
@@ -60,7 +73,8 @@ simplify (Appl [x]) = simplify x
 simplify (Appl (Var x:xs)) = Appl (Var x:xs)
 simplify (Appl (Appl xs:ys)) = simplify $ Appl (xs ++ ys)
 simplify (Appl (Abs [] body:xs)) = simplify $ Appl (body:xs)
-simplify (Appl (Abs (param:heads) body:arg:xs)) = error "TODO: Simplify function application"
+simplify (Appl (Abs [_] body:arg:xs)) = simplify $ Appl $ substitute (arg : shift 0) body : xs
+simplify (Appl (Abs (param:heads) body:xs)) = simplify $ Appl $ Abs [param] (Abs heads body) : xs
 simplify (Appl (Builtin x:xs)) = simplify $ Appl $ expandBuiltin x:xs
 simplify (Abs heads body) = (if null heads then id else Abs heads) $ simplify body
 simplify (Builtin x) = Builtin x
