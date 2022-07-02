@@ -1,16 +1,11 @@
 module Expr ( module Expr ) where
 
+import Util ( joinByMap, joinBy ) 
+
 data Combinator = I | M | K | KI | C deriving (Eq, Show)
 
 data Expr = Var String | Appl [Expr] | Abs [String] Expr | Builtin Combinator
     deriving (Eq)
-
-joinByMap :: (a -> [b]) -> [a] -> [b] -> [b]
-joinByMap _ [] _ = []
-joinByMap f (x:xs) s = f x ++ concatMap ((s ++).f) xs
-
-joinBy :: [[a]] -> [a] -> [a]
-joinBy = joinByMap id
 
 -- please ignore all constants and functions that start with "abstract". 
 -- They look dumb and they are, but it works and it allows
