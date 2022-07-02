@@ -112,7 +112,7 @@ simplify (Abs heads body) = case body of
     (Appl [Var 1]) -> Builtin I
     (Appl (reverse -> (Var 1:xs@(_:_)))) -- Eta Reduction
         | Appl xs `isFreeAt` 1 -> simplify $ substitute (shift (-1)) (Appl $ reverse xs)
-    _ -> simplify $ (case heads of
+    _ -> (case heads of
         [] -> id
         (_:rest) | Abs heads body `isFreeAt` 0 -> Abs $ ("_",0) : rest
                  | otherwise -> Abs heads
