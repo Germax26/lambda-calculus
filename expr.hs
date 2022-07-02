@@ -5,7 +5,7 @@ import Util ( joinByMap )
 
 type Variable = (String, Int)
 
-data Combinator = I | M | K | KI | C deriving (Eq, Show)
+data Combinator = I | M | K | KI | C | B deriving (Eq, Show)
 
 data Expr = Var Int | Appl [Expr] | Abs [Variable] Expr | Builtin Combinator
     deriving (Eq)
@@ -71,6 +71,7 @@ expandBuiltin M = Abs [("x", -1)] $ Appl [Var 1, Var 1]
 expandBuiltin K = Abs [("x", -1), ("y", -1)] $ Var 2
 expandBuiltin KI = Abs [("x", -1), ("y", -1)] $ Var 1
 expandBuiltin C = Abs [("f", -1), ("a", -1), ("b", -1)] $ Appl [Var 3, Var 1, Var 2]
+expandBuiltin B = Abs [("f", -1), ("g", -1), ("b", -1)] $ Appl [Var 3, Appl [Var 2, Var 1]]
 
 simplifyBuiltin :: Expr -> Expr
 simplifyBuiltin (Var x) = Var x
@@ -151,3 +152,6 @@ _KI = Builtin KI
 
 _C :: Expr
 _C = Builtin C
+
+_B :: Expr
+_B = Builtin B
