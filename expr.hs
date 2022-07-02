@@ -28,7 +28,10 @@ showApplicant f (Abs heads body) = "(" ++ f (Abs heads body) ++ ")"
 showApplicant f x = f x
 
 showHead :: Variable -> String
-showHead (x, y) = x ++ if y < 0 then "" else show y
+showHead ("_", _) = "_"
+showHead (x, y)
+    | y < 0 = x
+    | otherwise = x ++ show y
 
 showHeads :: [Variable] -> String
 showHeads [] = ""
@@ -51,14 +54,13 @@ showExpr heads (Var x)
     | otherwise = showHead $ heads !! (len - x)
     where len = length heads
 showExpr heads (Appl xs) = joinByMap (showApplicant $ showExpr heads) xs " "
-showExpr heads1 (Abs heads2 body) = 
-    showHeads (drop (length heads1) new_heads) ++ 
-    showExpr new_heads body
-    where new_heads = heads1 `addTo` heads2
-    -- TODO: Check if solving naming collisions is necessary. 
-    --       Use x `isFreeAt` 0 to check if an abstraction x doesnt use its 
-    --       variable. Just be careful to only check abstractions, as x 
-    --       `isFreeAt` 0 for other types of expressions can get weird results.
+showExpr heads1 (Abs [] body) = showExpr heads1 body
+showExpr heads1 x@(Abs [head] body)
+    | x `isFreeAt` 0 = showHeads [head] ++ showExpr (heads1 ++ [("_",0)]) body
+    | otherwise =   showHeads [last new_heads] ++
+                    showExpr new_heads body
+                    where new_heads = heads1 `addTo` [head]
+showExpr heads1 x@(Abs (head:heads2) body) = showExpr heads1 $ Abs [head] $ Abs heads2 body
 showExpr _ (Builtin x) = show x
 
 instance Show Expr where show x = showExpr [] x
@@ -106,10 +108,21 @@ simplify (Appl (Abs [_] body:arg:xs)) = simplify $ Appl $ substitute (arg : shif
 simplify (Appl (Abs (param:heads) body:xs)) = simplify $ Appl $ Abs [param] (Abs heads body) : xs
 simplify (Appl (Builtin x:xs)) = simplify $ Appl $ expandBuiltin x:xs
 simplify (Abs heads body) = case body of
+    Var 1 -> Builtin I
     (Appl [Var 1]) -> Builtin I
     (Appl (reverse -> (Var 1:xs@(_:_)))) -- Eta Reduction
         | Appl xs `isFreeAt` 1 -> simplify $ substitute (shift (-1)) (Appl $ reverse xs)
-    _ -> (if null heads then id else Abs heads) $ simplify body
+    _ -> simplify $ (case heads of
+        [] -> id
+        (_:rest) | Abs heads body `isFreeAt` 0 -> Abs $ ("_",0) : rest
+                 | otherwise -> Abs heads
+        ) $ simplify body 
+        -- TODO: Reduce clarifying numbers as much as possible.
+        -- This may require changing simplify to take a list of heads, like showExpr
+        -- or at least having a simplifyImpl that does, and simplify is just a wrapper
+        -- for simplifyImpl [], which just means that no heads have been encountered at
+        -- the top level of the expression.
+
 simplify (Builtin x) = Builtin x
 
 flatten :: Expr -> Expr
