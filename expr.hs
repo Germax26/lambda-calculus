@@ -1,3 +1,4 @@
+{-# LANGUAGE ViewPatterns #-}
 module Expr ( module Expr ) where
 
 import Util ( joinByMap, joinBy )
@@ -66,6 +67,12 @@ substitute xs (Abs (param:heads) body) = Abs [param] $ substitute sigmas gamma
 -- A builtin combinator should never have any free variables
 substitute xs (Builtin x) = Builtin x
 
+isFreeAt :: Expr -> Int -> Bool
+isFreeAt (Var x) y = x /= y
+isFreeAt (Appl xs) x = all (`isFreeAt` x) xs
+isFreeAt (Abs heads ys) x = ys `isFreeAt` (x + length heads) 
+isFreeAt (Builtin x) _ = True
+
 simplify :: Expr -> Expr
 simplify (Var x) = Var x
 simplify (Appl []) = error "unreachable"
@@ -76,7 +83,11 @@ simplify (Appl (Abs [] body:xs)) = simplify $ Appl (body:xs)
 simplify (Appl (Abs [_] body:arg:xs)) = simplify $ Appl $ substitute (arg : shift 0) body : xs
 simplify (Appl (Abs (param:heads) body:xs)) = simplify $ Appl $ Abs [param] (Abs heads body) : xs
 simplify (Appl (Builtin x:xs)) = simplify $ Appl $ expandBuiltin x:xs
-simplify (Abs heads body) = (if null heads then id else Abs heads) $ simplify body
+simplify (Abs heads body) = case body of
+    (Appl [Var 1]) -> Builtin I
+    (Appl (reverse -> (Var 1:xs@(_:_)))) -- Eta Reduction
+        | Appl xs `isFreeAt` 1 -> simplify $ substitute (shift (-1)) (Appl $ reverse xs)
+    _ -> (if null heads then id else Abs heads) $ simplify body
 simplify (Builtin x) = Builtin x
 
 flatten :: Expr -> Expr
