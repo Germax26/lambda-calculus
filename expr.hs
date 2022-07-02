@@ -20,7 +20,7 @@ abstractMiddle = abstractBack ++ abstractFront
 -- abstractMiddle = ","  -- represent uncurried functions with a comma seperating the parameters. i.e. λx,y.x 
 
 abstract :: [String] -> String
-abstract [] = error "unreachable"
+abstract [] = ""
 abstract xs = abstractFront ++ xs `joinBy` abstractMiddle ++ abstractBack
 
 instance Show Expr where
@@ -32,7 +32,6 @@ instance Show Expr where
               showApplicant (Appl xs) = "(" ++ show (Appl xs) ++ ")"
               showApplicant (Abs heads body) = "(" ++ show (Abs heads body) ++ ")"
               showApplicant x = show x
-    show (Abs [] body) = show body
     show (Abs heads body) = abstract heads ++ show body
     show (Builtin x) = show x
 
