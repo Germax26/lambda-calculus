@@ -41,7 +41,7 @@ showHeads xs = abstractFront ++ joinByMap showHead xs abstractMiddle ++ abstract
 
 addVariables :: [Variable] -> Variable -> [Variable]
 addVariables heads x@(base, n)
-    | x `elem` heads = addVariables heads (base, n + 1)
+    | base /= "_" && x `elem` heads = addVariables heads (base, n + 1)
     | otherwise = heads ++ [x]
 
 addTo :: [Variable] -> [Variable] -> [Variable]
@@ -53,14 +53,14 @@ showExpr heads (Var x)
     | x > len = error "TODO: Show free variables"
     | otherwise = showHead $ heads !! (len - x)
     where len = length heads
+showExpr heads (Appl (Appl xs:ys)) = showExpr heads $ Appl $ xs ++ ys
 showExpr heads (Appl xs) = joinByMap (showApplicant $ showExpr heads) xs " "
 showExpr heads1 (Abs [] body) = showExpr heads1 body
 showExpr heads1 x@(Abs [head] body)
-    | x `isFreeAt` 0 = showHeads [head] ++ showExpr (heads1 ++ [("_",0)]) body
-    | otherwise =   showHeads [last new_heads] ++
-                    showExpr new_heads body
-                    where new_heads = heads1 `addTo` [head]
-showExpr heads1 x@(Abs (head:heads2) body) = showExpr heads1 $ Abs [head] $ Abs heads2 body
+    = showHeads [last new_heads] ++ 
+    showExpr (if x `isFreeAt` 0 then heads1 ++ [("_",0)] else new_heads) body
+        where new_heads = heads1 `addTo` [head]
+showExpr heads1 (Abs (head:heads2) body) = showExpr heads1 $ Abs [head] $ Abs heads2 body
 showExpr _ (Builtin x) = show x
 
 instance Show Expr where show x = showExpr [] x
@@ -113,11 +113,13 @@ simplify (Abs heads body) = case body of
     (Appl [Var 1]) -> Builtin I
     (Appl (reverse -> (Var 1:xs@(_:_)))) -- Eta Reduction
         | Appl xs `isFreeAt` 1 -> simplify $ substitute (shift (-1)) (Appl $ reverse xs)
-    _ -> (case heads of
-        [] -> id
-        (_:rest) | Abs heads body `isFreeAt` 0 -> Abs $ ("_",0) : rest
-                 | otherwise -> Abs heads
-        ) $ simplify body 
+    _ -> let new_body = simplify body in
+        (if new_body == body then id else simplify) $
+        (case heads of
+            [] -> id
+            (_:rest)| Abs heads body `isFreeAt` 0 -> Abs $ ("_",0) : rest
+                    | otherwise -> Abs heads
+        ) new_body
         -- TODO: Reduce clarifying numbers as much as possible.
         -- This may require changing simplify to take a list of heads, like showExpr
         -- or at least having a simplifyImpl that does, and simplify is just a wrapper
@@ -129,6 +131,7 @@ simplify (Builtin x) = Builtin x
 flatten :: Expr -> Expr
 flatten (Var x) = Var x
 flatten (Appl (Appl xs:ys)) = flatten $ Appl $ xs ++ ys
+flatten (Appl [x]) = flatten x
 flatten (Appl xs) = Appl $ map flatten xs
 flatten (Abs [] body) = flatten body
 flatten (Abs heads1 (Abs heads2 body)) = flatten $ Abs (heads1 `addTo` heads2) body
