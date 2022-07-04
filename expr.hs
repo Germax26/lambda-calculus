@@ -108,24 +108,22 @@ simplify (Appl (Abs [] body:xs)) = simplify $ Appl (body:xs)
 simplify (Appl (Abs [_] body:arg:xs)) = simplify $ Appl $ substitute (arg : shift 0) body : xs
 simplify (Appl (Abs (param:heads) body:xs)) = simplify $ Appl $ Abs [param] (Abs heads body) : xs
 simplify (Appl (Builtin x:xs)) = simplify $ Appl $ expandBuiltin x:xs
-simplify (Abs heads body) = case body of
+simplify (Abs [] body) = simplify body
+simplify (Abs [head] body) = case simplify body of
     Var 1 -> Builtin I
     (Appl [Var 1]) -> Builtin I
     (Appl (reverse -> (Var 1:xs@(_:_)))) -- Eta Reduction
         | Appl xs `isFreeAt` 1 -> simplify $ substitute (shift (-1)) (Appl $ reverse xs)
     _ -> let new_body = simplify body in
         (if new_body == body then id else simplify) $
-        (case heads of
-            [] -> id
-            (_:rest)| Abs heads body `isFreeAt` 0 -> Abs $ ("_",0) : rest
-                    | otherwise -> Abs heads
-        ) new_body
+        (if Abs [head] body `isFreeAt` 0 then Abs [("_",0)] else Abs [head])
+        new_body
         -- TODO: Reduce clarifying numbers as much as possible.
         -- This may require changing simplify to take a list of heads, like showExpr
         -- or at least having a simplifyImpl that does, and simplify is just a wrapper
         -- for simplifyImpl [], which just means that no heads have been encountered at
         -- the top level of the expression.
-
+simplify (Abs (head:heads) body) = simplify $ Abs [head] $ Abs heads body
 simplify (Builtin x) = Builtin x
 
 flatten :: Expr -> Expr
