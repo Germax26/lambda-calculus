@@ -1,6 +1,7 @@
 module Lexer ( module Lexer ) where
 
 import Data.Either ()
+import Data.Maybe ( isJust, fromJust )
 import Data.Char ( isAlpha, isSpace )
 import System.IO ( hFlush, stdout )
 
@@ -48,6 +49,11 @@ newError msg loc = Error{errMessage=msg,errLoc=loc}
 instance Show Error where
     show Error{errMessage=msg,errLoc=loc} = show loc ++ ": ERROR: " ++ msg
 
+type Possible a = Either Error a
+
+err :: Error -> Possible a
+err = Left
+
 data TokenKind = Lambda | Dot | Open | Close | Ident | String | End deriving (Eq, Show)
 
 data Token = Token{
@@ -68,7 +74,8 @@ data Lexer = Lexer{
     lexerTokens::[Token],
     lexerLoc::Loc,
     lexerStartLoc::Loc,
-    lexerCurrent::String
+    lexerCurrent::String,
+    parserPeeked:: Maybe Token
 }
 
 instance Show Lexer where
@@ -77,8 +84,18 @@ instance Show Lexer where
         lexerTokens=tokens,
         lexerLoc=loc,
         lexerStartLoc=start,
-        lexerCurrent=curr
-    } = "{" ++ show tokens ++ " " ++ (if start /= loc then showLocIfWanted start ++ "'" ++ curr ++ "' " else "") ++ showLocIfWanted loc ++ "'" ++ source ++ "'}"
+        lexerCurrent=curr,
+        parserPeeked=tok
+    } = "{ " ++ 
+        (if isJust tok then show (fromJust tok) ++ " <- " else "") ++ 
+        show tokens ++ 
+        (if start /= loc then showLocIfWanted start ++ "'" ++ curr ++ "' <- " else "") ++
+        (if null source || start /= loc then "" else " <- " ++ showLocIfWanted loc ++ "'" ++ source ++ "'") ++ 
+        " }"
+
+type LexerResult = Possible Lexer
+type LexerMethod = Lexer -> LexerResult
+type LexerMethodWith a = Lexer -> Possible (a, Lexer)
 
 newLexer :: String -> Lexer
 newLexer s = Lexer{
@@ -86,17 +103,14 @@ newLexer s = Lexer{
     lexerTokens=[],
     lexerLoc=newLoc,
     lexerStartLoc=newLoc,
-    lexerCurrent=""
+    lexerCurrent="",
+    parserPeeked=Nothing
 }
 
-type LexerResult = Either Error Lexer
-err :: Error -> LexerResult
-err = Left
-
-lexErr :: String -> Lexer -> LexerResult
+lexErr :: String -> LexerMethod
 lexErr msg = err . newError msg . lexerLoc
 
-lexErrStartLoc :: String -> Lexer -> LexerResult
+lexErrStartLoc :: String -> LexerMethod
 lexErrStartLoc msg = err . newError msg . lexerStartLoc
 
 -- Lexer Methods
@@ -104,7 +118,7 @@ lexErrStartLoc msg = err . newError msg . lexerStartLoc
 lexerExhausted :: Lexer -> Bool
 lexerExhausted lexer = null $ lexerSource lexer
 
-lexerAdvance :: Lexer -> LexerResult
+lexerAdvance :: LexerMethod
 lexerAdvance lexer = case lexerSource lexer of
     [] -> lexErr "Unexpected EOF" lexer
     (c:rest) -> return lexer{
@@ -113,7 +127,7 @@ lexerAdvance lexer = case lexerSource lexer of
             lexerCurrent=lexerCurrent lexer ++ [c]
     }
 
-lexerSkip :: Lexer -> LexerResult
+lexerSkip :: LexerMethod
 lexerSkip lexer = case lexerSource lexer of
     [] -> lexErr "Unexpected EOF" lexer
     (c:rest) -> return lexer{
@@ -121,24 +135,24 @@ lexerSkip lexer = case lexerSource lexer of
             lexerLoc=getLocAdvancer c $ lexerLoc lexer
     }
 
-lexerExpect :: (Char -> Bool) -> String -> Lexer -> LexerResult
+lexerExpect :: (Char -> Bool) -> String -> LexerMethod
 lexerExpect f msg lexer = case lexerSource lexer of
     [] -> lexErr ("Expected `"++msg++"`, got EOF") lexer
     c:_ -> if f c
         then lexerAdvance lexer
         else lexErr ("Expected `"++msg++"`, got `"++[c]++"`") lexer
 
-lexerExpectChar :: Char -> Lexer -> LexerResult
+lexerExpectChar :: Char -> LexerMethod
 lexerExpectChar c = lexerExpect (== c) [c]
 
-lexerAssert :: (Char -> Bool) -> String -> Lexer -> LexerResult
+lexerAssert :: (Char -> Bool) -> String -> LexerMethod
 lexerAssert f msg lexer = case lexerSource lexer of
     [] -> lexErr ("Expected `"++msg++"`, got EOF") lexer
     c:_ -> if f c
         then lexerSkip lexer
         else lexErr ("Expected `"++msg++"`, got `"++[c]++"`") lexer
 
-lexerAssertChar :: Char -> Lexer -> LexerResult
+lexerAssertChar :: Char -> LexerMethod
 lexerAssertChar c = lexerAssert (==c) [c]
 
 
@@ -148,7 +162,7 @@ takeCharsWhile f (curr, c:r, loc) = if f c
     then takeCharsWhile f (curr ++ [c], r, getLocAdvancer c loc)
     else (curr, c:r, loc)
 
-lexerAdvanceWhile :: (Char -> Bool) -> Lexer -> LexerResult
+lexerAdvanceWhile :: (Char -> Bool) -> LexerMethod
 lexerAdvanceWhile f lexer =
     case takeCharsWhile f ("", lexerSource lexer, lexerLoc lexer) of
         (chars, rest, loc) -> return lexer{
@@ -157,15 +171,15 @@ lexerAdvanceWhile f lexer =
             lexerCurrent=lexerCurrent lexer ++ chars
         }
 
-lexerSkipWhile :: (Char -> Bool) -> Lexer -> LexerResult
-lexerSkipWhile f lexer = 
+lexerSkipWhile :: (Char -> Bool) -> LexerMethod
+lexerSkipWhile f lexer =
     case takeCharsWhile f ("", lexerSource lexer, lexerLoc lexer) of
         (_, rest, loc) -> return lexer{
             lexerSource=rest,
             lexerLoc=loc
         }
 
-lexerFlush :: Lexer -> LexerResult
+lexerFlush :: LexerMethod
 lexerFlush lexer = return lexer{
     lexerStartLoc=lexerLoc lexer,
     lexerCurrent=""
@@ -176,10 +190,10 @@ lexerGetCurrent Lexer{lexerStartLoc=loc,lexerCurrent=curr} = (curr, loc)
 
 -- Lexer Methods that add Tokens
 
-appendToken :: Token -> Lexer -> LexerResult
+appendToken :: Token -> LexerMethod
 appendToken tok lexer = return lexer{lexerTokens=lexerTokens lexer ++ [tok]}
 
-appendTokenFromFlush :: TokenKind -> Lexer -> LexerResult
+appendTokenFromFlush :: TokenKind -> LexerMethod
 appendTokenFromFlush kind lexer = do
     let (curr, loc) = lexerGetCurrent lexer
     lexer <- appendToken (Token kind curr loc) lexer
@@ -187,7 +201,7 @@ appendTokenFromFlush kind lexer = do
 
 -- Main Lexer method
 
-λlex :: Lexer -> LexerResult
+λlex :: LexerMethod
 λlex lexer = do
     lexer <- lexerFlush lexer
     lexer <- case lexerSource lexer of
@@ -242,3 +256,43 @@ repl = do
     putStrLn "Will display all tokens used in parsing given an input string."
     putStrLn "Use ^C to quit.\n"
     replRec
+
+-- Parser Methods
+
+parseError :: String -> LexerMethodWith a
+parseError msg parser = do
+    (tok, _) <- parserPeek parser
+    err $ newError msg $ tokenLoc tok
+
+parserNext :: LexerMethodWith Token
+parserNext parser = case parserPeeked parser of
+    Nothing -> case lexerTokens parser of
+        [] -> error "TODO"
+        (tok:rest) -> return (tok, parser{lexerTokens=rest})
+    Just tok -> return (tok, parser{parserPeeked=Nothing})
+
+parserPeek :: LexerMethodWith Token
+parserPeek parser = do
+    res <- parserNext parser
+    let (tok, parser) = res
+    return (tok, parser{parserPeeked=Just tok})
+
+parserExpect :: TokenKind -> LexerMethodWith Token
+parserExpect kind parser = do
+    (tok, parser) <- parserPeek parser
+    case tokenKind tok of
+        kind1 | kind1 == kind -> parserNext parser
+              | otherwise -> parseError
+              ("Expected "++show kind++", but got "++show tok++"") parser
+
+parserParseWhile :: LexerMethodWith a -> LexerMethodWith Bool -> LexerMethodWith [a]
+parserParseWhile parseF pred parser = do
+    (cond, parser) <- pred parser
+    if cond then parserParseDoWhile parseF pred parser
+    else return ([], parser)
+
+parserParseDoWhile :: LexerMethodWith a -> LexerMethodWith Bool -> LexerMethodWith [a]
+parserParseDoWhile parseF pred parser = do
+    (a, parser) <- parseF parser
+    (as, parser) <- parserParseWhile parseF pred parser
+    return (a:as, parser)

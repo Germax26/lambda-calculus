@@ -1,7 +1,17 @@
 {-# LANGUAGE ViewPatterns #-}
 module Expr ( module Expr ) where
 
+import Data.List ( elemIndex )
 import Util ( joinByMap )
+import Lexer
+    ( Token(tokenContents, tokenKind),
+      TokenKind(Lambda, Dot, Open, Close, Ident, End),
+      LexerMethodWith,
+      parseError,
+      parserNext,
+      parserPeek,
+      parserExpect,
+      parserParseDoWhile )
 
 type Variable = (String, Int)
 
@@ -156,3 +166,42 @@ _C = Builtin C
 
 _B :: Expr
 _B = Builtin B
+
+-- Parsing Methods
+
+exprParseSingle :: [String] -> LexerMethodWith Expr
+exprParseSingle heads parser = do
+    (tok, parser) <- parserNext parser
+    case tokenKind tok of
+        Lambda -> do
+            (tok, parser) <- parserExpect Ident parser
+            let head = tokenContents tok
+            (_, parser) <- parserExpect Dot parser
+            (expr, parser) <- exprParseImpl (head : heads) parser
+            return (Abs [(head, -1)] expr, parser)
+        Open -> do
+            (expr, parser) <- exprParseImpl heads parser
+            (_, parser) <- parserExpect Close parser
+            return (expr, parser)
+        Ident -> case tokenContents tok `elemIndex` heads of
+          Nothing -> error "TODO: Parse free variables"
+          Just n -> return (Var (n + 1), parser)
+        -- String -> error "TODO: Parse strings" -- TODO: Make string a type of expression
+        _ -> parseError ("Expected expression, but got " ++ show tok) parser
+
+shouldContParsingExprs :: LexerMethodWith Bool
+shouldContParsingExprs parser = do
+    (tok, parser) <- parserPeek parser
+    let kind = tokenKind tok
+    return (kind /= Close && kind /= End, parser)
+
+exprParseImpl :: [String] -> LexerMethodWith Expr
+exprParseImpl heads parser = do
+    (exprs, parser) <- parserParseDoWhile (exprParseSingle heads) shouldContParsingExprs parser
+    case exprs of
+        [] -> error "unreachable"
+        [expr] -> return (expr, parser)
+        _ -> return (Appl exprs, parser)
+
+exprParse :: LexerMethodWith Expr
+exprParse = exprParseImpl []
