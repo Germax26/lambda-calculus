@@ -157,6 +157,14 @@ lexerAdvanceWhile f lexer =
             lexerCurrent=lexerCurrent lexer ++ chars
         }
 
+lexerSkipWhile :: (Char -> Bool) -> Lexer -> LexerResult
+lexerSkipWhile f lexer = 
+    case takeCharsWhile f ("", lexerSource lexer, lexerLoc lexer) of
+        (_, rest, loc) -> return lexer{
+            lexerSource=rest,
+            lexerLoc=loc
+        }
+
 lexerFlush :: Lexer -> LexerResult
 lexerFlush lexer = return lexer{
     lexerStartLoc=lexerLoc lexer,
@@ -183,7 +191,7 @@ appendTokenFromFlush kind lexer = do
 λlex lexer = do
     lexer <- lexerFlush lexer
     lexer <- case lexerSource lexer of
-        [] -> appendTokenFromFlush End lexer
+        [] -> return lexer
         c:_ | c == 'λ' || c == '\\' -> do
                 lexer <- lexerAdvance lexer
                 appendTokenFromFlush Lambda lexer
@@ -211,9 +219,9 @@ appendTokenFromFlush kind lexer = do
             | isAlpha c -> do
                 lexer <- lexerAdvanceWhile isAlpha lexer
                 appendTokenFromFlush Ident lexer
-            | isSpace c -> lexerAdvanceWhile isSpace lexer
+            | isSpace c -> lexerSkipWhile isSpace lexer
             | otherwise -> lexErr ("Invalid character `"++[c]++"`") lexer
-    if null (lexerSource lexer) && null (lexerCurrent lexer) then return lexer else λlex lexer
+    if null (lexerSource lexer) then appendTokenFromFlush End lexer else λlex lexer
 
 lexStr :: String -> LexerResult
 lexStr = λlex . newLexer
