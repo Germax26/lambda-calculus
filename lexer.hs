@@ -48,7 +48,7 @@ newError msg loc = Error{errMessage=msg,errLoc=loc}
 instance Show Error where
     show Error{errMessage=msg,errLoc=loc} = show loc ++ ": ERROR: " ++ msg
 
-data TokenKind = Lambda | Dot | Open | Close | Ident | String deriving (Eq, Show)
+data TokenKind = Lambda | Dot | Open | Close | Ident | String | End deriving (Eq, Show)
 
 data Token = Token{
     tokenKind::TokenKind,
@@ -183,7 +183,7 @@ appendTokenFromFlush kind lexer = do
 λlex lexer = do
     lexer <- lexerFlush lexer
     lexer <- case lexerSource lexer of
-        [] -> lexErr "Empty expression" lexer
+        [] -> appendTokenFromFlush End lexer
         c:_ | c == 'λ' || c == '\\' -> do
                 lexer <- lexerAdvance lexer
                 appendTokenFromFlush Lambda lexer
@@ -201,10 +201,10 @@ appendTokenFromFlush kind lexer = do
                 lexer <- lexerAdvance lexer
                 appendTokenFromFlush Close lexer
             | c == '"' -> do
-                lexer <- lexerSkip lexer 
+                lexer <- lexerSkip lexer
                 lexer <- lexerAdvanceWhile (/= '"') lexer
                 case lexerSource lexer of
-                    [] -> lexErrStartLoc "Unterminal string literal" lexer
+                    [] -> lexErrStartLoc "Unterminated string literal" lexer
                     c:_ -> do
                         lexer <- lexerAssertChar '"' lexer
                         appendTokenFromFlush String lexer
@@ -213,7 +213,7 @@ appendTokenFromFlush kind lexer = do
                 appendTokenFromFlush Ident lexer
             | isSpace c -> lexerAdvanceWhile isSpace lexer
             | otherwise -> lexErr ("Invalid character `"++[c]++"`") lexer
-    if null $ lexerSource lexer then return lexer else λlex lexer
+    if null (lexerSource lexer) && null (lexerCurrent lexer) then return lexer else λlex lexer
 
 lexStr :: String -> LexerResult
 lexStr = λlex . newLexer
