@@ -5,7 +5,7 @@ import Data.List ( elemIndex )
 import Util ( joinByMap )
 import Lexer
     ( Token(tokenContents, tokenKind),
-      TokenKind(Lambda, Dot, Open, Close, Ident, End),
+      TokenKind(Lambda, Dot, Open, Close, Star, Ident, End),
       LexerMethodWith,
       parseError,
       parserNext,
@@ -17,7 +17,7 @@ type Variable = (String, Int)
 
 data Combinator = I | M | K | KI | C | B deriving (Eq, Show)
 
-data Expr = Var Int | Appl [Expr] | Abs [Variable] Expr | Builtin Combinator
+data Expr = Var Int | Free String | Appl [Expr] | Abs [Variable] Expr | Builtin Combinator
     deriving (Eq)
 
 -- please ignore all constants and functions that start with "abstract". 
@@ -40,14 +40,20 @@ showApplicant f x = f x
 showHead :: Variable -> String
 showHead ("_", _) = "_"
 showHead (x, y)
-    | y < 0 = x
-    | otherwise = x ++ show y
+    | y <= 0 = x
+    | otherwise = x ++ show (y - 1)
 
 showHeads :: [Variable] -> String
 showHeads [] = ""
 showHeads xs = abstractFront ++ joinByMap showHead xs abstractMiddle ++ abstractBack
 -- I'm quite sad that my elegent xs `joinBy` abstractMiddle is gone. :(
 -- Sadly, all good things must come to an end. You'll be missed, `joinBy`.
+
+invVar :: Variable -> Variable
+invVar (base, n) = (base, -n-1)
+
+var :: String -> Variable
+var s = (s,0)
 
 addVariables :: [Variable] -> Variable -> [Variable]
 addVariables heads x@(base, n)
@@ -59,16 +65,18 @@ addTo = foldl addVariables
 
 showExpr :: [Variable] -> Expr -> String
 showExpr heads (Var x)
-    | x <= 0 = error "TODO: Nonpositive indices"
-    | x > len = error "TODO: Show free variables"
-    | otherwise = showHead $ heads !! (len - x)
+    | x > 0 || x <= len = showHead $ heads !! (len - x)
+    | otherwise = error "unreachable"
     where len = length heads
+showExpr heads (Free x) = case last $ heads `addTo` [var x] of
+    (_,n) | n > snd (var x) || invVar (var x) `elem` heads -> '*':x
+          | otherwise -> x
 showExpr heads (Appl (Appl xs:ys)) = showExpr heads $ Appl $ xs ++ ys
 showExpr heads (Appl xs) = joinByMap (showApplicant $ showExpr heads) xs " "
 showExpr heads1 (Abs [] body) = showExpr heads1 body
 showExpr heads1 x@(Abs [head] body)
-    = showHeads [last new_heads] ++ 
-    showExpr (if x `isFreeAt` 0 then heads1 ++ [("_",0)] else new_heads) body
+    = showHeads [last new_heads] ++
+    showExpr (if x `isFreeAt` 0 then heads1 ++ [invVar head] else new_heads) body
         where new_heads = heads1 `addTo` [head]
 showExpr heads1 (Abs (head:heads2) body) = showExpr heads1 $ Abs [head] $ Abs heads2 body
 showExpr _ (Builtin x) = show x
@@ -76,15 +84,16 @@ showExpr _ (Builtin x) = show x
 instance Show Expr where show x = showExpr [] x
 
 expandBuiltin :: Combinator -> Expr
-expandBuiltin I = Abs [("x", -1)] $ Var 1
-expandBuiltin M = Abs [("x", -1)] $ Appl [Var 1, Var 1]
-expandBuiltin K = Abs [("x", -1), ("y", -1)] $ Var 2
-expandBuiltin KI = Abs [("x", -1), ("y", -1)] $ Var 1
-expandBuiltin C = Abs [("f", -1), ("a", -1), ("b", -1)] $ Appl [Var 3, Var 1, Var 2]
-expandBuiltin B = Abs [("f", -1), ("g", -1), ("b", -1)] $ Appl [Var 3, Appl [Var 2, Var 1]]
+expandBuiltin I = Abs [var "x"] $ Var 1
+expandBuiltin M = Abs [var "x"] $ Appl [Var 1, Var 1]
+expandBuiltin K = Abs [var "x", var "y"] $ Var 2
+expandBuiltin KI = Abs [var "x", var "y"] $ Var 1
+expandBuiltin C = Abs [var "f", var "a", var "b"] $ Appl [Var 3, Var 1, Var 2]
+expandBuiltin B = Abs [var "f", var "g", var "b"] $ Appl [Var 3, Appl [Var 2, Var 1]]
 
 simplifyBuiltin :: Expr -> Expr
 simplifyBuiltin (Var x) = Var x
+simplifyBuiltin (Free x) = Free x
 simplifyBuiltin (Appl xs) = Appl $ map simplifyBuiltin xs
 simplifyBuiltin (Abs heads body) = Abs heads $ simplifyBuiltin body
 simplifyBuiltin (Builtin x) = expandBuiltin x
@@ -94,6 +103,7 @@ shift x = map Var [x+1..]
 
 substitute :: [Expr] -> Expr -> Expr
 substitute xs (Var x)  = xs !! (x - 1)
+substitute xs (Free x) = Free x
 substitute xs (Appl ys) = Appl $ map (substitute xs) ys
 substitute xs (Abs [] body) = substitute xs body
 substitute xs (Abs (param:heads) body) = Abs [param] $ substitute sigmas gamma
@@ -104,15 +114,18 @@ substitute xs (Builtin x) = Builtin x
 
 isFreeAt :: Expr -> Int -> Bool
 isFreeAt (Var x) y = x /= y
+isFreeAt (Free x) y = True
 isFreeAt (Appl xs) x = all (`isFreeAt` x) xs
 isFreeAt (Abs heads ys) x = ys `isFreeAt` (x + length heads)
 isFreeAt (Builtin x) _ = True
 
 simplify :: Expr -> Expr
 simplify (Var x) = Var x
+simplify (Free x) = Free x
 simplify (Appl []) = error "unreachable"
 simplify (Appl [x]) = simplify x
 simplify (Appl (Var x:xs)) = Appl (Var x:xs)
+simplify (Appl (Free x:xs)) = Appl (Free x:xs)
 simplify (Appl (Appl xs:ys)) = simplify $ Appl (xs ++ ys)
 simplify (Appl (Abs [] body:xs)) = simplify $ Appl (body:xs)
 simplify (Appl (Abs [_] body:arg:xs)) = simplify $ Appl $ substitute (arg : shift 0) body : xs
@@ -126,7 +139,7 @@ simplify (Abs [head] body) = case simplify body of
         | Appl xs `isFreeAt` 1 -> simplify $ substitute (shift (-1)) (Appl $ reverse xs)
     _ -> let new_body = simplify body in
         (if new_body == body then id else simplify) $
-        (if Abs [head] body `isFreeAt` 0 then Abs [("_",0)] else Abs [head])
+        (if Abs [head] body `isFreeAt` 0 then Abs [var "_"] else Abs [head])
         new_body
         -- TODO: Reduce clarifying numbers as much as possible.
         -- This may require changing simplify to take a list of heads, like showExpr
@@ -138,6 +151,7 @@ simplify (Builtin x) = Builtin x
 
 flatten :: Expr -> Expr
 flatten (Var x) = Var x
+flatten (Free x) = Free x
 flatten (Appl (Appl xs:ys)) = flatten $ Appl $ xs ++ ys
 flatten (Appl [x]) = flatten x
 flatten (Appl xs) = Appl $ map flatten xs
@@ -178,14 +192,18 @@ exprParseSingle heads parser = do
             let head = tokenContents tok
             (_, parser) <- parserExpect Dot parser
             (expr, parser) <- exprParseImpl (head : heads) parser
-            return (Abs [(head, -1)] expr, parser)
+            return (Abs [var head] expr, parser)
         Open -> do
             (expr, parser) <- exprParseImpl heads parser
             (_, parser) <- parserExpect Close parser
             return (expr, parser)
-        Ident -> case tokenContents tok `elemIndex` heads of
-          Nothing -> error "TODO: Parse free variables"
+        Star -> do
+            (tok, parser) <- parserExpect Ident parser
+            return (Free $ tokenContents tok, parser)
+        Ident -> case x `elemIndex` heads of
+          Nothing -> return (Free x, parser)
           Just n -> return (Var (n + 1), parser)
+          where x = tokenContents tok
         -- String -> error "TODO: Parse strings" -- TODO: Make string a type of expression
         _ -> parseError ("Expected expression, but got " ++ show tok) parser
 

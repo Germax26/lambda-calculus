@@ -54,7 +54,7 @@ type Possible a = Either Error a
 err :: Error -> Possible a
 err = Left
 
-data TokenKind = Lambda | Dot | Open | Close | Ident | String | End deriving (Eq, Show)
+data TokenKind = Lambda | Dot | Open | Close | Star | Ident | String | End deriving (Eq, Show)
 
 data Token = Token{
     tokenKind::TokenKind,
@@ -222,6 +222,9 @@ appendTokenFromFlush kind lexer = do
             | c == ')' -> do
                 lexer <- lexerAdvance lexer
                 appendTokenFromFlush Close lexer
+            | c == '*' -> do
+                lexer <- lexerAdvance lexer
+                appendTokenFromFlush Star lexer
             | c == '"' -> do
                 lexer <- lexerSkip lexer
                 lexer <- lexerAdvanceWhile (/= '"') lexer
