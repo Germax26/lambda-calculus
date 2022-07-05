@@ -262,10 +262,8 @@ repl = do
 
 -- Parser Methods
 
-parseError :: String -> LexerMethodWith a
-parseError msg parser = do
-    (tok, _) <- parserPeek parser
-    err $ newError msg $ tokenLoc tok
+tokenError :: String -> Token -> Possible a
+tokenError msg tok = err $ newError msg $ tokenLoc tok
 
 parserNext :: LexerMethodWith Token
 parserNext parser = case parserPeeked parser of
@@ -282,11 +280,11 @@ parserPeek parser = do
 
 parserExpect :: TokenKind -> LexerMethodWith Token
 parserExpect kind parser = do
-    (tok, parser) <- parserPeek parser
+    (tok, parser) <- parserNext parser
     case tokenKind tok of
         kind1 | kind1 == kind -> parserNext parser
-              | otherwise -> parseError
-              ("Expected "++show kind++", but got "++show tok++"") parser
+              | otherwise -> tokenError
+              ("Expected "++show kind++", but got "++show tok++"") tok
 
 parserParseWhile :: LexerMethodWith a -> LexerMethodWith Bool -> LexerMethodWith [a]
 parserParseWhile parseF pred parser = do

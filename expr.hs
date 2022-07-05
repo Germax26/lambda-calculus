@@ -7,7 +7,7 @@ import Lexer
     ( Token(tokenContents, tokenKind),
       TokenKind(Lambda, Dot, Open, Close, Star, Ident, End),
       LexerMethodWith,
-      parseError,
+      tokenError,
       parserNext,
       parserPeek,
       parserExpect,
@@ -201,11 +201,11 @@ exprParseSingle heads parser = do
             (tok, parser) <- parserExpect Ident parser
             return (Free $ tokenContents tok, parser)
         Ident -> case x `elemIndex` heads of
-          Nothing -> return (Free x, parser)
-          Just n -> return (Var (n + 1), parser)
-          where x = tokenContents tok
+            Nothing -> return (Free x, parser)
+            Just n -> return (Var (n + 1), parser)
+            where x = tokenContents tok
         -- String -> error "TODO: Parse strings" -- TODO: Make string a type of expression
-        _ -> parseError ("Expected expression, but got " ++ show tok) parser
+        _ -> tokenError ("Expected expression, but got " ++ show tok) tok
 
 shouldContParsingExprs :: LexerMethodWith Bool
 shouldContParsingExprs parser = do
