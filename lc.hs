@@ -1,6 +1,6 @@
 module Main where
 
-import Lexer ( repl )
+import Expr ( repl )
 
 main :: IO ()
-main = Lexer.repl -- temporary main
+main = Expr.repl -- temporary main

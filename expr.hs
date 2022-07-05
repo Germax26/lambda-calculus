@@ -6,12 +6,15 @@ import Util ( joinByMap )
 import Lexer
     ( Token(tokenContents, tokenKind),
       TokenKind(Lambda, Dot, Open, Close, Star, Ident, End),
+      Possible,
       LexerMethodWith,
+      lexStr,
       tokenError,
       parserNext,
       parserPeek,
       parserExpect,
       parserParseDoWhile )
+import System.IO (hFlush, stdout)
 
 type Variable = (String, Int)
 
@@ -223,3 +226,27 @@ exprParseImpl heads parser = do
 
 exprParse :: LexerMethodWith Expr
 exprParse = exprParseImpl []
+
+-- REPL
+
+exprParseStr :: String -> Possible Expr
+exprParseStr line = do
+    parser <- lexStr line
+    (expr, parser) <- exprParse parser
+    _ <- parserExpect End parser
+    return expr
+
+replRec :: IO ()
+replRec = do
+    putStr "expr-parser> "
+    hFlush stdout -- prevents buffering issues
+    line <- getLine
+    either print print $ exprParseStr line
+    replRec
+
+repl :: IO ()
+repl = do
+    putStrLn "Lambda Calculus expression parser."
+    putStrLn "Will parse a lambda calculus expression."
+    putStrLn "Use ^C to quit.\n"
+    replRec
