@@ -282,7 +282,7 @@ parserExpect :: TokenKind -> LexerMethodWith Token
 parserExpect kind parser = do
     (tok, parser) <- parserNext parser
     case tokenKind tok of
-        kind1 | kind1 == kind -> parserNext parser
+        kind1 | kind1 == kind -> return (tok, parser)
               | otherwise -> tokenError
               ("Expected "++show kind++", but got "++show tok++"") tok
 
